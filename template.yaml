@@ -1,9 +1,5 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: >
-  textExact
-
-  Sample SAM Template for textExact
 
 Globals:
   Function:
@@ -13,6 +9,9 @@ Parameters:
   Stage:
     Type: String
     Default: dev
+  BucketName:
+    Type: String
+    Default: aiyi.demo.textexact
 
 Resources:
   HelloWorldFunction:
@@ -21,7 +20,7 @@ Resources:
       CodeUri: hello-world/
       Handler: app.lambdaHandler
       Runtime: nodejs12.x
-      FunctionName: !Join [ "", [ !Ref Stage, "-api-HelloWorldFunction"]]
+      FunctionName: !Join ["", [!Ref Stage, "-api-HelloWorldFunction"]]
       Events:
         HelloWorld:
           Type: HttpApi
@@ -29,11 +28,30 @@ Resources:
             ApiId: !Ref MyHttpApi
             Path: /hello
             Method: get
-
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - "s3:GetObject"
+              Resource:
+                Fn::GetAtt: [S3Bucket, "Arn"]
+            - Effect: Allow
+              Action:
+                - "textexact:*"
+              Resource: "*"
   MyHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
-        StageName: !Ref Stage
+      StageName: !Ref Stage
+      Cors:
+        AllowMethods: "'OPTIONS,POST,GET'"
+        AllowHeaders: "'Content-Type'"
+        AllowOrigin: "'*'"
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
 
 Outputs:
   HelloWorldApi:
