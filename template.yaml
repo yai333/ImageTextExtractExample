@@ -14,11 +14,52 @@ Parameters:
     Default: aiyi.demo.textexact
 
 Resources:
-  HelloWorldFunction:
+  TextExtractSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub "textexact-sns-topic"
+      TopicName: !Sub "textexact-sns-topic"
+      Subscription:
+        - Protocol: lambda
+          Endpoint: !GetAtt TextExtractSNSTopic.Arn
+
+  TextExtractEndFunction:
+    Type: AWS::Serverless::Function
+    Environment:
+      Variables:
+        SNS_TOPIC: !GetAtt TextExtractSNSTopic.Arn
+    Properties:
+      CodeUri: python/
+      Handler: handler.textExactEnd
+      Runtime: nodejs8.10
+
+  TextExtractRole:
+    Type: AWS::IAM::Role
+    Policies:
+      - !GetAtt TextExtractSNSTopicPolicy.Arn
+
+  TextExtractSNSTopicPolicy::
+    Type: "AWS::SNS::TopicPolicy"
+    Properties:
+      Topics:
+        - !Ref TextExtractSNSTopic
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: "sns:Publish"
+            Resource: !Ref TextExtractSNSTopic
+            Principal:
+              AWS: "*"
+            Condition:
+              ArnLike:
+                AWS:SourceArn: !Sub "arn:aws:*:*:${AWS::AccountId}:*"
+
+  extExactStartFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: hello-world/
-      Handler: app.lambdaHandler
+      CodeUri: nodejs/
+      Handler: handler.lambdaHandler
       Runtime: nodejs12.x
       FunctionName: !Join ["", [!Ref Stage, "-api-HelloWorldFunction"]]
       Events:
@@ -34,12 +75,31 @@ Resources:
             - Effect: Allow
               Action:
                 - "s3:GetObject"
-              Resource:
-                Fn::GetAtt: [S3Bucket, "Arn"]
+              Resource: !GetAtt S3Bucket.Arn
             - Effect: Allow
               Action:
                 - "textexact:*"
               Resource: "*"
+
+  EventFailureHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.lambdaHandler
+      CodeUri: python/
+      Runtime: python3.7
+      FunctionName: !Join ["", [!Ref Stage, "-api-event-failure"]]
+
+  EventInvokeConfig:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref TextExactStartFunction
+      Qualifier: "$LATEST"
+      MaximumEventAgeInSeconds: 60
+      MaximumRetryAttempts: 0
+      DestinationConfig:
+        OnSuccess:
+          Destination: !GetAtt Fromhelloworld.Arn
+
   MyHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
