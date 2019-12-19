@@ -21,54 +21,14 @@ Resources:
       TopicName: !Sub "textexact-sns-topic"
       Subscription:
         - Protocol: lambda
-          Endpoint: !GetAtt TextExtractSNSTopic.Arn
+          Endpoint: !GetAtt TextExtractEndFunction.Arn
 
   TextExtractEndFunction:
     Type: AWS::Serverless::Function
-    Environment:
-      Variables:
-        SNS_TOPIC: !GetAtt TextExtractSNSTopic.Arn
     Properties:
       CodeUri: python/
       Handler: handler.textExactEnd
       Runtime: nodejs8.10
-
-  TextExtractRole:
-    Type: AWS::IAM::Role
-    Policies:
-      - !GetAtt TextExtractSNSTopicPolicy.Arn
-
-  TextExtractSNSTopicPolicy::
-    Type: "AWS::SNS::TopicPolicy"
-    Properties:
-      Topics:
-        - !Ref TextExtractSNSTopic
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Action: "sns:Publish"
-            Resource: !Ref TextExtractSNSTopic
-            Principal:
-              AWS: "*"
-            Condition:
-              ArnLike:
-                AWS:SourceArn: !Sub "arn:aws:*:*:${AWS::AccountId}:*"
-
-  extExactStartFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: nodejs/
-      Handler: handler.lambdaHandler
-      Runtime: nodejs12.x
-      FunctionName: !Join ["", [!Ref Stage, "-api-HelloWorldFunction"]]
-      Events:
-        HelloWorld:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref MyHttpApi
-            Path: /hello
-            Method: get
       Policies:
         - Version: "2012-10-17"
           Statement:
@@ -76,18 +36,54 @@ Resources:
               Action:
                 - "s3:GetObject"
               Resource: !GetAtt S3Bucket.Arn
-            - Effect: Allow
-              Action:
-                - "textexact:*"
-              Resource: "*"
 
   EventFailureHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handler.lambdaHandler
+      Handler: handler.delete_activity
       CodeUri: python/
       Runtime: python3.7
       FunctionName: !Join ["", [!Ref Stage, "-api-event-failure"]]
+
+  TextExactStartFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Environment:
+        Variables:
+          TEXT_EXTRACT_ROLE: !GetAtt TextExtractRole.Arn
+          SNS_TOPIC: !Ref TextExtractSNSTopic
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: "sns:Publish"
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - "s3:GetObject"
+              Resource: !GetAtt S3Bucket.Arn
+            - Effect: Allow
+              Action:
+                - "lambda:invokeFunction"
+              Resource:
+                - !GetAtt EventFailureHandlerFunction.Arn
+                - arn:aws:lambda:ap-southeast-2:820412658253:function:test
+      CodeUri: nodejs/
+      Handler: handler.textexactHandler
+      Runtime: nodejs12.x
+      FunctionName: !Join ["", [!Ref Stage, "TextExactStartFunction"]]
+      Events:
+        PDFUploadEvent:
+          Type: S3
+          Properties:
+            Bucket: !Ref S3Bucket
+            Events: s3:ObjectCreated:*
+      # Events:
+      #   TextExactStart:
+      #     Type: HttpApi
+      #     Properties:
+      #       Path: /textexact
+      #       Method: get
 
   EventInvokeConfig:
     Type: AWS::Lambda::EventInvokeConfig
@@ -98,7 +94,32 @@ Resources:
       MaximumRetryAttempts: 0
       DestinationConfig:
         OnSuccess:
-          Destination: !GetAtt Fromhelloworld.Arn
+          Destination: !GetAtt EventFailureHandlerFunction.Arn
+        OnFailure:
+          Destination: !GetAtt EventFailureHandlerFunction.Arn
+
+  TextExtractRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "TextExtractRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "textract.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - PolicyName: "TextExtractRoleAccess"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "sns:Publish"
+                Resource: "*"
 
   MyHttpApi:
     Type: AWS::Serverless::HttpApi
@@ -112,14 +133,3 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Ref BucketName
-
-Outputs:
-  HelloWorldApi:
-    Description: "API Gateway endpoint URL for Prod stage for Hello World function"
-    Value: !Sub "https://${MyHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/hello/"
-  HelloWorldFunction:
-    Description: "Hello World Lambda Function ARN"
-    Value: !GetAtt HelloWorldFunction.Arn
-  HelloWorldFunctionIamRole:
-    Description: "Implicit IAM Role created for Hello World function"
-    Value: !GetAtt HelloWorldFunctionRole.Arn
