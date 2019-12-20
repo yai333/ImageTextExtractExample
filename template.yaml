@@ -23,27 +23,22 @@ Resources:
         - Protocol: lambda
           Endpoint: !GetAtt TextExtractEndFunction.Arn
 
+  TextExtractSNSTopicPolicy:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TextExtractEndFunction
+      Principal: sns.amazonaws.com
+      Action: lambda:InvokeFunction
+      SourceArn: !Ref TextExtractSNSTopic
+
   TextExtractEndFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: python/
-      Handler: handler.textExactEnd
-      Runtime: nodejs8.10
+      CodeUri: src/
+      Handler: handler.textExactEndHandler
+      Runtime: nodejs12.x
       Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - "s3:GetObject"
-              Resource: !GetAtt S3Bucket.Arn
-
-  EventFailureHandlerFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: handler.delete_activity
-      CodeUri: python/
-      Runtime: python3.7
-      FunctionName: !Join ["", [!Ref Stage, "-api-event-failure"]]
+        - AWSLambdaExecute
 
   TextExactStartFunction:
     Type: AWS::Serverless::Function
@@ -52,51 +47,16 @@ Resources:
         Variables:
           TEXT_EXTRACT_ROLE: !GetAtt TextExtractRole.Arn
           SNS_TOPIC: !Ref TextExtractSNSTopic
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action: "sns:Publish"
-              Resource: "*"
-            - Effect: Allow
-              Action:
-                - "s3:GetObject"
-              Resource: !GetAtt S3Bucket.Arn
-            - Effect: Allow
-              Action:
-                - "lambda:invokeFunction"
-              Resource:
-                - !GetAtt EventFailureHandlerFunction.Arn
-                - arn:aws:lambda:ap-southeast-2:820412658253:function:test
-      CodeUri: nodejs/
-      Handler: handler.textexactHandler
+      Role: !GetAtt TextExtractRole.Arn
+      CodeUri: src/
+      Handler: handler.textexactStartHandler
       Runtime: nodejs12.x
-      FunctionName: !Join ["", [!Ref Stage, "TextExactStartFunction"]]
       Events:
         PDFUploadEvent:
           Type: S3
           Properties:
             Bucket: !Ref S3Bucket
             Events: s3:ObjectCreated:*
-      # Events:
-      #   TextExactStart:
-      #     Type: HttpApi
-      #     Properties:
-      #       Path: /textexact
-      #       Method: get
-
-  EventInvokeConfig:
-    Type: AWS::Lambda::EventInvokeConfig
-    Properties:
-      FunctionName: !Ref TextExactStartFunction
-      Qualifier: "$LATEST"
-      MaximumEventAgeInSeconds: 60
-      MaximumRetryAttempts: 0
-      DestinationConfig:
-        OnSuccess:
-          Destination: !GetAtt EventFailureHandlerFunction.Arn
-        OnFailure:
-          Destination: !GetAtt EventFailureHandlerFunction.Arn
 
   TextExtractRole:
     Type: AWS::IAM::Role
@@ -109,8 +69,11 @@ Resources:
             Principal:
               Service:
                 - "textract.amazonaws.com"
+                - "lambda.amazonaws.com"
             Action:
               - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AWSLambdaExecute"
       Policies:
         - PolicyName: "TextExtractRoleAccess"
           PolicyDocument:
@@ -118,8 +81,26 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - "sns:Publish"
+                  - "sns:*"
                 Resource: "*"
+              - Effect: Allow
+                Action:
+                  - "textract:*"
+                Resource: "*"
+
+  GetTextExtractResult:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role: !GetAtt TextExtractRole.Arn
+      CodeUri: src/
+      Handler: handler.getTextExtractResult
+      Runtime: nodejs12.x
+      Events:
+        TextExactStart:
+          Type: HttpApi
+          Properties:
+            Path: /textexact
+            Method: get
 
   MyHttpApi:
     Type: AWS::Serverless::HttpApi
@@ -129,6 +110,7 @@ Resources:
         AllowMethods: "'OPTIONS,POST,GET'"
         AllowHeaders: "'Content-Type'"
         AllowOrigin: "'*'"
+
   S3Bucket:
     Type: AWS::S3::Bucket
     Properties:
