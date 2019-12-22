@@ -12,7 +12,7 @@ The following must be done before following this guide:
 - AWS SAM CLI.
 - jq (optional).
 
-Deployment
+# Deployment
 
 ```
 $sam deploy --capabilities CAPABILITY_NAMED_IAM --guided
