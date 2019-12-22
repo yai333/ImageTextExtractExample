@@ -9,5 +9,5 @@ region = "ap-southeast-2"
 profile = "yiai"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "Stage=dev BucketName=aiyi.demo.textexact"
+parameter_overrides = "Stage=dev BucketName=aiyi.demo.textract"
 

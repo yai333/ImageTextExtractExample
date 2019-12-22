@@ -11,45 +11,51 @@ Parameters:
     Default: dev
   BucketName:
     Type: String
-    Default: aiyi.demo.textexact
+    Default: aiyi.demo.textract
 
 Resources:
-  TextExtractSNSTopic:
+  TextractSNSTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: !Sub "textexact-sns-topic"
-      TopicName: !Sub "textexact-sns-topic"
+      DisplayName: !Sub "textract-sns-topic"
+      TopicName: !Sub "textract-sns-topic"
       Subscription:
         - Protocol: lambda
-          Endpoint: !GetAtt TextExtractEndFunction.Arn
+          Endpoint: !GetAtt TextractEndFunction.Arn
 
-  TextExtractSNSTopicPolicy:
+  TextractSNSTopicPolicy:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref TextExtractEndFunction
+      FunctionName: !Ref TextractEndFunction
       Principal: sns.amazonaws.com
       Action: lambda:InvokeFunction
-      SourceArn: !Ref TextExtractSNSTopic
+      SourceArn: !Ref TextractSNSTopic
 
-  TextExtractEndFunction:
+  TextractEndFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
-      Handler: handler.textExactEndHandler
+      Handler: handler.textractEndHandler
       Runtime: nodejs12.x
+      Role: !GetAtt TextractRole.Arn
       Policies:
         - AWSLambdaExecute
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "s3:PutObject"
+              Resource: !Join [":", ["arn:aws:s3::", !Ref BucketName]]
 
-  TextExactStartFunction:
+  TextractStartFunction:
     Type: AWS::Serverless::Function
     Properties:
       Environment:
         Variables:
-          TEXT_EXTRACT_ROLE: !GetAtt TextExtractRole.Arn
-          SNS_TOPIC: !Ref TextExtractSNSTopic
-      Role: !GetAtt TextExtractRole.Arn
+          TEXT_EXTRACT_ROLE: !GetAtt TextractRole.Arn
+          SNS_TOPIC: !Ref TextractSNSTopic
+      Role: !GetAtt TextractRole.Arn
       CodeUri: src/
-      Handler: handler.textexactStartHandler
+      Handler: handler.textractStartHandler
       Runtime: nodejs12.x
       Events:
         PDFUploadEvent:
@@ -57,11 +63,16 @@ Resources:
           Properties:
             Bucket: !Ref S3Bucket
             Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: ".pdf"
 
-  TextExtractRole:
+  TextractRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: "TextExtractRole"
+      RoleName: "TextractRole"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -75,7 +86,7 @@ Resources:
       ManagedPolicyArns:
         - "arn:aws:iam::aws:policy/AWSLambdaExecute"
       Policies:
-        - PolicyName: "TextExtractRoleAccess"
+        - PolicyName: "TextractRoleAccess"
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -88,19 +99,19 @@ Resources:
                   - "textract:*"
                 Resource: "*"
 
-  GetTextExtractResult:
+  GetTextractResult:
     Type: AWS::Serverless::Function
     Properties:
-      Role: !GetAtt TextExtractRole.Arn
+      Role: !GetAtt TextractRole.Arn
       CodeUri: src/
-      Handler: handler.getTextExtractResult
+      Handler: handler.getTextractResult
       Runtime: nodejs12.x
       Events:
         TextExactStart:
           Type: HttpApi
           Properties:
-            Path: /textexact
-            Method: get
+            Path: /textract
+            Method: post
 
   MyHttpApi:
     Type: AWS::Serverless::HttpApi
